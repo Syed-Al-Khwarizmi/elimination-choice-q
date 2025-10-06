@@ -25,7 +25,8 @@ interface GameState {
 }
 
 export function EliminationGame({ initialItems, onRestart }: EliminationGameProps) {
-  const [gameState, setGameState] = useKV<GameState>("elimination-game-state", {
+  // Create default game state
+  const defaultGameState: GameState = {
     items: initialItems,
     eliminated: [],
     currentPair: [],
@@ -34,14 +35,16 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
     isComplete: false,
     winner: null,
     itemScores: {}
-  })
+  }
+
+  const [gameState, setGameState] = useKV<GameState>("elimination-game-state", defaultGameState)
 
   const [showCelebration, setShowCelebration] = useState(false)
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
 
   // Initialize or restore game
   useEffect(() => {
-    if (!gameState || gameState.items.length === 0 || 
+    if (!gameState || !gameState.items || gameState.items.length === 0 || 
         !gameState.items.every(item => initialItems.includes(item))) {
       // Initialize new game
       const shuffled = [...initialItems].sort(() => Math.random() - 0.5)
@@ -69,60 +72,65 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
     setSelectedChoice(chosen)
     
     setTimeout(() => {
-      if (!gameState) return
-      
-      const rejected = gameState.currentPair.find(item => item !== chosen)!
-      const newEliminated = [...gameState.eliminated, rejected]
-      const remaining = gameState.items.filter(item => item !== rejected)
-      
-      // Update scores - chosen item gets a point
-      const updatedScores = { ...gameState.itemScores }
-      updatedScores[chosen] = (updatedScores[chosen] || 0) + 1
-
-      if (remaining.length === 1) {
-        // Game complete
-        setGameState({
-          ...gameState,
-          isComplete: true,
-          winner: remaining[0],
-          items: remaining,
-          eliminated: newEliminated,
-          currentPair: [],
-          itemScores: updatedScores
-        })
-        setShowCelebration(true)
-      } else {
-        // Continue game - find next pair
-        const availableItems = remaining.filter(item => !gameState.currentPair.includes(item))
-        
-        let nextPair: string[]
-        if (availableItems.length > 0) {
-          // Pair chosen item with an unused item from this round
-          // Prioritize items with higher scores (survivors from previous rounds)
-          const sortedAvailable = availableItems.sort((a, b) => 
-            (updatedScores[b] || 0) - (updatedScores[a] || 0)
-          )
-          nextPair = [chosen, sortedAvailable[0]]
-        } else {
-          // All items have been compared this round, start new round
-          // Sort remaining items by score (higher scoring items appear in later rounds)
-          const sortedRemaining = remaining.sort((a, b) => 
-            (updatedScores[b] || 0) - (updatedScores[a] || 0)
-          )
-          nextPair = sortedRemaining.slice(0, 2)
+      setGameState(currentState => {
+        if (!currentState || !currentState.currentPair || currentState.currentPair.length < 2) {
+          return currentState || defaultGameState
         }
+        
+        const rejected = currentState.currentPair.find(item => item !== chosen)!
+        const newEliminated = [...currentState.eliminated, rejected]
+        const remaining = currentState.items.filter(item => item !== rejected)
+        
+        // Update scores - chosen item gets a point
+        const updatedScores = { ...currentState.itemScores }
+        updatedScores[chosen] = (updatedScores[chosen] || 0) + 1
 
-        const newRound = availableItems.length === 0 ? gameState.round + 1 : gameState.round
+        if (remaining.length === 1) {
+          // Game complete
+          const newState = {
+            ...currentState,
+            isComplete: true,
+            winner: remaining[0],
+            items: remaining,
+            eliminated: newEliminated,
+            currentPair: [],
+            itemScores: updatedScores
+          }
+          setShowCelebration(true)
+          return newState
+        } else {
+          // Continue game - find next pair
+          const availableItems = remaining.filter(item => !currentState.currentPair.includes(item))
+          
+          let nextPair: string[]
+          if (availableItems.length > 0) {
+            // Pair chosen item with an unused item from this round
+            // Prioritize items with higher scores (survivors from previous rounds)
+            const sortedAvailable = availableItems.sort((a, b) => 
+              (updatedScores[b] || 0) - (updatedScores[a] || 0)
+            )
+            nextPair = [chosen, sortedAvailable[0]]
+          } else {
+            // All items have been compared this round, start new round
+            // Sort remaining items by score (higher scoring items appear in later rounds)
+            const sortedRemaining = remaining.sort((a, b) => 
+              (updatedScores[b] || 0) - (updatedScores[a] || 0)
+            )
+            nextPair = sortedRemaining.slice(0, 2)
+          }
 
-        setGameState({
-          ...gameState,
-          items: remaining,
-          eliminated: newEliminated,
-          currentPair: nextPair,
-          round: newRound,
-          itemScores: updatedScores
-        })
-      }
+          const newRound = availableItems.length === 0 ? currentState.round + 1 : currentState.round
+
+          return {
+            ...currentState,
+            items: remaining,
+            eliminated: newEliminated,
+            currentPair: nextPair,
+            round: newRound,
+            itemScores: updatedScores
+          }
+        }
+      })
       
       setSelectedChoice(null)
     }, 800)
@@ -143,7 +151,7 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
     onRestart()
   }
 
-  if (!gameState) {
+  if (!gameState || !gameState.items) {
     return (
       <div className="text-center space-y-4">
         <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto" />
@@ -152,7 +160,7 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
     )
   }
 
-  const progress = gameState.eliminated.length > 0 
+  const progress = gameState && gameState.eliminated && gameState.eliminated.length > 0 
     ? (gameState.eliminated.length / (initialItems.length - 1)) * 100
     : 0
 
@@ -165,7 +173,7 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
     )
   }
 
-  if (gameState.currentPair.length < 2) {
+  if (!gameState.currentPair || gameState.currentPair.length < 2) {
     return (
       <div className="text-center space-y-4">
         <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto" />
@@ -188,7 +196,7 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
             Round {gameState.round} of {gameState.totalRounds}
           </Badge>
           <p className="text-sm text-muted-foreground">
-            {gameState.items.length} items remaining
+            {gameState.items ? gameState.items.length : 0} items remaining
           </p>
         </div>
         
@@ -211,31 +219,33 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
       </div>
 
       {/* Choice Cards */}
-      <AnimatePresence mode="wait">
-        <motion.div 
-          key={gameState.currentPair.join("-")}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.3 }}
-          className="grid md:grid-cols-2 gap-8"
-        >
-          {gameState.currentPair.map((item) => (
-            <motion.div
-              key={item}
-              initial={{ scale: 0.95 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.1 }}
-            >
-              <ChoiceCard
-                item={item}
-                onClick={() => makeChoice(item)}
-                isSelected={selectedChoice === item}
-              />
-            </motion.div>
-          ))}
-        </motion.div>
-      </AnimatePresence>
+      {gameState.currentPair && gameState.currentPair.length >= 2 && (
+        <AnimatePresence mode="wait">
+          <motion.div 
+            key={gameState.currentPair.join("-")}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="grid md:grid-cols-2 gap-8"
+          >
+            {gameState.currentPair.map((item) => (
+              <motion.div
+                key={item}
+                initial={{ scale: 0.95 }}
+                animate={{ scale: 1 }}
+                transition={{ delay: 0.1 }}
+              >
+                <ChoiceCard
+                  item={item}
+                  onClick={() => makeChoice(item)}
+                  isSelected={selectedChoice === item}
+                />
+              </motion.div>
+            ))}
+          </motion.div>
+        </AnimatePresence>
+      )}
 
       {/* Versus indicator */}
       <div className="text-center">
