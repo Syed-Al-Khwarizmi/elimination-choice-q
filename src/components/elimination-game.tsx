@@ -15,21 +15,25 @@ interface EliminationGameProps {
 
 interface GameState {
   items: string[]
+  eliminated: string[]
   currentPair: string[]
   round: number
   totalRounds: number
   isComplete: boolean
   winner: string | null
+  itemScores: Record<string, number>
 }
 
 export function EliminationGame({ initialItems, onRestart }: EliminationGameProps) {
   const [gameState, setGameState] = useKV<GameState>("elimination-game-state", {
     items: initialItems,
+    eliminated: [],
     currentPair: [],
     round: 1,
     totalRounds: 0,
     isComplete: false,
-    winner: null
+    winner: null,
+    itemScores: {}
   })
 
   const [showCelebration, setShowCelebration] = useState(false)
@@ -42,14 +46,18 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
       // Initialize new game
       const shuffled = [...initialItems].sort(() => Math.random() - 0.5)
       const totalRounds = Math.ceil(Math.log2(shuffled.length))
+      const initialScores: Record<string, number> = {}
+      shuffled.forEach(item => initialScores[item] = 0)
       
       setGameState({
         items: shuffled,
+        eliminated: [],
         currentPair: shuffled.slice(0, 2),
         round: 1,
         totalRounds,
         isComplete: false,
-        winner: null
+        winner: null,
+        itemScores: initialScores
       })
     }
   }, [initialItems, gameState, setGameState])
@@ -63,9 +71,13 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
     setTimeout(() => {
       if (!gameState) return
       
-      const remaining = gameState.items.filter(item => item !== (
-        gameState.currentPair[0] === chosen ? gameState.currentPair[1] : gameState.currentPair[0]
-      ))
+      const rejected = gameState.currentPair.find(item => item !== chosen)!
+      const newEliminated = [...gameState.eliminated, rejected]
+      const remaining = gameState.items.filter(item => item !== rejected)
+      
+      // Update scores - chosen item gets a point
+      const updatedScores = { ...gameState.itemScores }
+      updatedScores[chosen] = (updatedScores[chosen] || 0) + 1
 
       if (remaining.length === 1) {
         // Game complete
@@ -74,30 +86,41 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
           isComplete: true,
           winner: remaining[0],
           items: remaining,
-          currentPair: []
+          eliminated: newEliminated,
+          currentPair: [],
+          itemScores: updatedScores
         })
         setShowCelebration(true)
       } else {
-        // Continue game
-        const nextPairIndex = remaining.findIndex(item => 
-          !gameState.currentPair.includes(item)
-        )
+        // Continue game - find next pair
+        const availableItems = remaining.filter(item => !gameState.currentPair.includes(item))
         
         let nextPair: string[]
-        if (nextPairIndex !== -1) {
-          // Still items that haven't been compared this round
-          nextPair = [chosen, remaining[nextPairIndex]]
+        if (availableItems.length > 0) {
+          // Pair chosen item with an unused item from this round
+          // Prioritize items with higher scores (survivors from previous rounds)
+          const sortedAvailable = availableItems.sort((a, b) => 
+            (updatedScores[b] || 0) - (updatedScores[a] || 0)
+          )
+          nextPair = [chosen, sortedAvailable[0]]
         } else {
-          // All items compared, start new round
-          const shuffled = remaining.sort(() => Math.random() - 0.5)
-          nextPair = shuffled.slice(0, 2)
+          // All items have been compared this round, start new round
+          // Sort remaining items by score (higher scoring items appear in later rounds)
+          const sortedRemaining = remaining.sort((a, b) => 
+            (updatedScores[b] || 0) - (updatedScores[a] || 0)
+          )
+          nextPair = sortedRemaining.slice(0, 2)
         }
+
+        const newRound = availableItems.length === 0 ? gameState.round + 1 : gameState.round
 
         setGameState({
           ...gameState,
           items: remaining,
+          eliminated: newEliminated,
           currentPair: nextPair,
-          round: remaining.length <= initialItems.length / 2 ? gameState.round + 1 : gameState.round
+          round: newRound,
+          itemScores: updatedScores
         })
       }
       
@@ -108,11 +131,13 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
   const resetGame = () => {
     setGameState({
       items: [],
+      eliminated: [],
       currentPair: [],
       round: 1,
       totalRounds: 0,
       isComplete: false,
-      winner: null
+      winner: null,
+      itemScores: {}
     })
     setShowCelebration(false)
     onRestart()
@@ -127,8 +152,8 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
     )
   }
 
-  const progress = gameState.items.length > 0 
-    ? ((initialItems.length - gameState.items.length) / (initialItems.length - 1)) * 100
+  const progress = gameState.eliminated.length > 0 
+    ? (gameState.eliminated.length / (initialItems.length - 1)) * 100
     : 0
 
   if (showCelebration && gameState.winner) {
