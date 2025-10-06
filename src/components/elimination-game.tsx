@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge"
 import { ChoiceCard } from "./choice-card"
 import { WinnerCelebration } from "./winner-celebration"
 import { ArrowLeft } from "@phosphor-icons/react"
-import { useKV } from "@github/spark/hooks"
 import { useSounds } from "@/hooks/use-sounds"
 
 interface EliminationGameProps {
@@ -26,45 +25,36 @@ interface GameState {
 }
 
 export function EliminationGame({ initialItems, onRestart }: EliminationGameProps) {
-  // Create default game state
-  const defaultGameState: GameState = {
-    items: initialItems,
-    eliminated: [],
-    currentPair: [],
-    round: 1,
-    totalRounds: 0,
-    isComplete: false,
-    winner: null,
-    itemScores: {}
-  }
-
-  const [gameState, setGameState] = useKV<GameState>("elimination-game-state", defaultGameState)
   const [showCelebration, setShowCelebration] = useState(false)
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
+  const [gameState, setGameState] = useState<GameState | null>(null)
   const { playSelectionSound, playEliminationSound } = useSounds()
 
-  // Initialize or restore game
-  useEffect(() => {
-    if (!gameState || !gameState.items || gameState.items.length === 0 || 
-        !gameState.items.every(item => initialItems.includes(item))) {
-      // Initialize new game
-      const shuffled = [...initialItems].sort(() => Math.random() - 0.5)
-      const totalRounds = Math.ceil(Math.log2(shuffled.length))
-      const initialScores: Record<string, number> = {}
-      shuffled.forEach(item => initialScores[item] = 0)
-      
-      setGameState({
-        items: shuffled,
-        eliminated: [],
-        currentPair: shuffled.slice(0, 2),
-        round: 1,
-        totalRounds,
-        isComplete: false,
-        winner: null,
-        itemScores: initialScores
-      })
+  // Create initial game state
+  const createInitialGameState = useCallback((): GameState => {
+    const shuffled = [...initialItems].sort(() => Math.random() - 0.5)
+    const totalRounds = Math.ceil(Math.log2(shuffled.length))
+    const initialScores: Record<string, number> = {}
+    shuffled.forEach(item => initialScores[item] = 0)
+    
+    return {
+      items: shuffled,
+      eliminated: [],
+      currentPair: shuffled.slice(0, 2),
+      round: 1,
+      totalRounds,
+      isComplete: false,
+      winner: null,
+      itemScores: initialScores
     }
-  }, [initialItems, gameState, setGameState])
+  }, [initialItems])
+
+  // Initialize game state on mount
+  useEffect(() => {
+    if (!gameState) {
+      setGameState(createInitialGameState())
+    }
+  }, [gameState, createInitialGameState])
 
   // Handle choice selection
   const makeChoice = (chosen: string) => {
@@ -78,7 +68,7 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
       
       setGameState(currentState => {
         if (!currentState || !currentState.currentPair || currentState.currentPair.length < 2) {
-          return currentState || defaultGameState
+          return currentState
         }
         
         const rejected = currentState.currentPair.find(item => item !== chosen)!
@@ -141,25 +131,16 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
   }
 
   const resetGame = () => {
-    setGameState({
-      items: [],
-      eliminated: [],
-      currentPair: [],
-      round: 1,
-      totalRounds: 0,
-      isComplete: false,
-      winner: null,
-      itemScores: {}
-    })
+    setGameState(null)
     setShowCelebration(false)
     onRestart()
   }
 
-  if (!gameState || !gameState.items) {
+  if (!gameState || !gameState.items || gameState.items.length === 0) {
     return (
       <div className="text-center space-y-4">
         <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto" />
-        <p>Loading game...</p>
+        <p>Setting up your game...</p>
       </div>
     )
   }
