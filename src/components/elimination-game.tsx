@@ -180,9 +180,6 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
           <Badge variant="secondary" className="mb-2">
             Round {gameState.round} of {gameState.totalRounds}
           </Badge>
-          <p className="text-sm text-muted-foreground">
-            {gameState.items ? gameState.items.length : 0} items remaining
-          </p>
         </div>
         
         <div className="w-24"> {/* Spacer for layout balance */}

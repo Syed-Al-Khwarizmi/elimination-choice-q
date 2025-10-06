@@ -20,7 +20,8 @@ const GAME_ITEMS = [
   "Apple Watch",
   "Earrings",
   "Branded Hoodie",
-  "Headphones"
+  "Headphones",
+  "Shoes"
 ]
 
 export function GameSetup({ onStartGame }: GameSetupProps) {
