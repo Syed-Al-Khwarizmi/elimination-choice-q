@@ -7,6 +7,7 @@ import { ChoiceCard } from "./choice-card"
 import { WinnerCelebration } from "./winner-celebration"
 import { ArrowLeft } from "@phosphor-icons/react"
 import { useKV } from "@github/spark/hooks"
+import { useSounds } from "@/hooks/use-sounds"
 
 interface EliminationGameProps {
   initialItems: string[]
@@ -38,9 +39,9 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
   }
 
   const [gameState, setGameState] = useKV<GameState>("elimination-game-state", defaultGameState)
-
   const [showCelebration, setShowCelebration] = useState(false)
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
+  const { playSelectionSound, playEliminationSound } = useSounds()
 
   // Initialize or restore game
   useEffect(() => {
@@ -70,8 +71,11 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
     if (!gameState) return
     
     setSelectedChoice(chosen)
+    playSelectionSound()
     
     setTimeout(() => {
+      playEliminationSound()
+      
       setGameState(currentState => {
         if (!currentState || !currentState.currentPair || currentState.currentPair.length < 2) {
           return currentState || defaultGameState
@@ -218,7 +222,7 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
         <p className="text-muted-foreground">Choose one to continue</p>
       </div>
 
-      {/* Choice Cards */}
+      {/* Choice Cards with VS in between */}
       {gameState.currentPair && gameState.currentPair.length >= 2 && (
         <AnimatePresence mode="wait">
           <motion.div 
@@ -227,32 +231,52 @@ export function EliminationGame({ initialItems, onRestart }: EliminationGameProp
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3 }}
-            className="grid md:grid-cols-2 gap-8"
+            className="flex flex-col md:flex-row items-center gap-8"
           >
-            {gameState.currentPair.map((item) => (
-              <motion.div
-                key={item}
-                initial={{ scale: 0.95 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.1 }}
-              >
-                <ChoiceCard
-                  item={item}
-                  onClick={() => makeChoice(item)}
-                  isSelected={selectedChoice === item}
-                />
-              </motion.div>
-            ))}
+            {/* First Option */}
+            <motion.div
+              key={gameState.currentPair[0]}
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.1 }}
+              className="flex-1 w-full"
+            >
+              <ChoiceCard
+                item={gameState.currentPair[0]}
+                onClick={() => makeChoice(gameState.currentPair[0])}
+                isSelected={selectedChoice === gameState.currentPair[0]}
+              />
+            </motion.div>
+            
+            {/* VS Badge in the middle */}
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
+              className="flex-shrink-0"
+            >
+              <Badge variant="outline" className="text-xl py-3 px-6 font-bold bg-background shadow-lg">
+                VS
+              </Badge>
+            </motion.div>
+            
+            {/* Second Option */}
+            <motion.div
+              key={gameState.currentPair[1]}
+              initial={{ scale: 0.95 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.1 }}
+              className="flex-1 w-full"
+            >
+              <ChoiceCard
+                item={gameState.currentPair[1]}
+                onClick={() => makeChoice(gameState.currentPair[1])}
+                isSelected={selectedChoice === gameState.currentPair[1]}
+              />
+            </motion.div>
           </motion.div>
         </AnimatePresence>
       )}
-
-      {/* Versus indicator */}
-      <div className="text-center">
-        <Badge variant="outline" className="text-lg py-2 px-4">
-          VS
-        </Badge>
-      </div>
     </div>
   )
 }
